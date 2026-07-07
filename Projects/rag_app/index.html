@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Local RAG Explorer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg:       #080b12;
+    --surface:  #0e1320;
+    --surface2: #141928;
+    --surface3: #1c2235;
+    --border:   #232b42;
+    --border2:  #2d3855;
+    --text:     #d8deef;
+    --muted:    #6b748f;
+    --accent:   #4d8fff;
+    --accent2:  #2ee8a5;
+    --warn:     #f5a623;
+    --danger:   #ff5f5f;
+    --purple:   #b47cff;
+    --radius:   10px;
+    --mono:     'JetBrains Mono', monospace;
+    --sans:     'Space Grotesk', system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    grid-template-rows: 50px 1fr;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    grid-column: 1 / -1;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface);
+  }
+  .logo {
+    width: 26px; height: 26px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; flex-shrink: 0;
+  }
+  header h1 { font-size: 14px; font-weight: 700; letter-spacing: -0.3px; }
+  header small { font-size: 11px; color: var(--muted); }
+  .badge {
+    margin-left: auto; font-size: 11px; padding: 3px 9px;
+    border-radius: 20px; border: 1px solid var(--border2);
+    color: var(--muted); white-space: nowrap;
+    font-family: var(--mono);
+  }
+
+  /* ── Left panel ── */
+  .left {
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--surface);
+  }
+  .section { border-bottom: 1px solid var(--border); padding: 14px 16px; flex-shrink: 0; }
+  .section-title {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.9px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+  .dot.green { background: var(--accent2); }
+
+  input[type=url], input[type=text], input[type=search] {
+    width: 100%; background: var(--bg); border: 1px solid var(--border2);
+    border-radius: 8px; color: var(--text);
+    padding: 8px 11px; font-size: 13px; outline: none;
+    transition: border-color .2s; font-family: var(--mono);
+  }
+  input:focus { border-color: var(--accent); }
+
+  .btn {
+    width: 100%; margin-top: 7px; padding: 8px; border-radius: 8px;
+    border: none; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: opacity .15s, transform .1s;
+    font-family: var(--sans);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary { background: var(--surface3); color: var(--text); border: 1px solid var(--border2); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .progress-bar-wrap { background: var(--bg); border-radius: 3px; height: 3px; overflow: hidden; margin-top: 7px; }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 3px; transition: width .3s ease; width: 0%; }
+
+  #embed-feed { flex: 1; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+
+  .embed-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 11px;
+    animation: slideIn .2s ease;
+  }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .embed-meta { font-size: 10px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between; font-family: var(--mono); }
+  .embed-snippet { font-size: 10px; color: var(--text); opacity: 0.6; margin-bottom: 6px; font-family: var(--mono); line-height: 1.4; }
+  .bar-row { display: flex; gap: 2px; align-items: flex-end; height: 22px; }
+  .bar { flex: 1; border-radius: 2px; min-height: 2px; }
+
+  /* ── Right panel ── */
+  .right { display: flex; flex-direction: column; overflow: hidden; }
+
+  .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+  .tab {
+    padding: 10px 20px; font-size: 13px; font-weight: 500;
+    color: var(--muted); cursor: pointer; border: none;
+    background: transparent; border-bottom: 2px solid transparent;
+    transition: color .15s, border-color .15s; font-family: var(--sans);
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  .tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+  .tab-panel.active { display: flex; }
+
+  /* ── Chat ── */
+  #chat-area { flex: 1; overflow-y: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 13px; }
+  .message { display: flex; gap: 10px; animation: slideIn .2s ease; }
+  .avatar { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .avatar.user { background: var(--accent); color: #fff; }
+  .avatar.ai { background: var(--surface3); border: 1px solid var(--border2); }
+  .bubble { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; max-width: 740px; line-height: 1.65; font-size: 14px; }
+  .bubble.user { background: #141d36; border-color: #263058; }
+  .retrieved-chunks { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+  .chunk-pill { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 11px; font-family: var(--mono); display: flex; align-items: center; gap: 7px; }
+  .score-badge { background: #0f2d21; color: var(--accent2); border-radius: 4px; padding: 1px 6px; font-size: 10px; flex-shrink: 0; }
+  .chunk-text { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-line { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+  .spin { display: inline-block; width: 10px; height: 10px; border: 1.5px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .input-bar { border-top: 1px solid var(--border); padding: 12px 20px; display: flex; gap: 8px; background: var(--surface); flex-shrink: 0; }
+  .input-bar input { flex: 1; padding: 9px 13px; font-size: 14px; }
+  .input-bar button { padding: 9px 17px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--sans); }
+  .input-bar button:disabled { opacity: .4; cursor: not-allowed; }
+  .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); text-align: center; }
+  .empty-icon { font-size: 28px; opacity: 0.3; }
+
+  /* ── Inspector toolbar ── */
+  .inspector-toolbar {
+    padding: 10px 18px; border-bottom: 1px solid var(--border);
+    display: flex; gap: 9px; align-items: center;
+    background: var(--surface); flex-shrink: 0; flex-wrap: wrap;
+  }
+  .inspector-toolbar input[type=search] { flex: 1; min-width: 150px; padding: 6px 10px; font-size: 12px; }
+  .stat-pill { font-size: 11px; padding: 3px 8px; border-radius: 20px; border: 1px solid var(--border2); color: var(--muted); white-space: nowrap; font-family: var(--mono); }
+  .stat-pill b { color: var(--text); }
+  .refresh-btn { padding: 5px 12px; border-radius: 7px; border: 1px solid var(--accent); background: transparent; color: var(--accent); font-size: 12px; cursor: pointer; font-family: var(--sans); }
+
+  .source-bar { padding: 8px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--surface); }
+  .source-list { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+  .source-tag { font-size: 10px; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--border2); color: var(--muted); background: var(--bg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; font-family: var(--mono); }
+
+  .inspector-body { flex: 1; overflow-y: auto; padding: 10px 18px; display: flex; flex-direction: column; gap: 6px; }
+
+  /* ── Chunk rows ── */
+  .chunk-row { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: border-color .15s; }
+  .chunk-row:hover { border-color: var(--border2); }
+  .chunk-header { padding: 10px 14px; display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
+  .chunk-num { font-size: 10px; font-weight: 700; color: var(--accent); font-family: var(--mono); min-width: 50px; flex-shrink: 0; }
+  .chunk-preview { flex: 1; font-size: 11px; color: var(--muted); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Sparkline histogram */
+  .sparkline { width: 80px; height: 20px; flex-shrink: 0; }
+
+  .chunk-stats { display: flex; gap: 8px; flex-shrink: 0; }
+  .cstat { font-size: 10px; color: var(--muted); white-space: nowrap; font-family: var(--mono); }
+  .cstat b { color: var(--text); }
+  .chevron { font-size: 9px; color: var(--muted); flex-shrink: 0; transition: transform .2s; }
+  .chunk-row.expanded .chevron { transform: rotate(90deg); }
+
+  .chunk-detail { display: none; padding: 0 14px 14px; border-top: 1px solid var(--border); }
+  .chunk-row.expanded .chunk-detail { display: block; }
+
+  .detail-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+  .dmeta { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+  .dmeta b { color: var(--text); }
+
+  /* Heatmap (32 dims) */
+  .heatmap { display: flex; gap: 2px; margin-top: 8px; flex-wrap: wrap; }
+  .heat-cell {
+    width: 36px; height: 28px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px; font-family: var(--mono); cursor: default;
+    transition: transform .1s;
+  }
+  .heat-cell:hover { transform: scale(1.15); z-index: 2; position: relative; }
+
+  .full-text {
+    font-size: 11px; font-family: var(--mono); line-height: 1.6; color: var(--text);
+    background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+    padding: 10px 12px; margin-top: 9px; white-space: pre-wrap; word-break: break-word;
+    max-height: 180px; overflow-y: auto;
+  }
+
+  /* Action buttons inside detail */
+  .detail-actions { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
+  .detail-btn {
+    padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border2);
+    background: var(--surface3); color: var(--text); font-size: 11px;
+    cursor: pointer; font-family: var(--sans); transition: border-color .15s;
+  }
+  .detail-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .detail-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* Similar panel (inline) */
+  .similar-panel { margin-top: 10px; display: none; }
+  .similar-panel.open { display: block; }
+  .similar-title { font-size: 10px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+  .sim-row { background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 7px 10px; margin-bottom: 5px; display: flex; align-items: center; gap: 9px; }
+  .sim-score { font-size: 10px; font-family: var(--mono); color: var(--accent2); min-width: 42px; flex-shrink: 0; }
+  .sim-snippet { font-size: 10px; font-family: var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+  /* ── Pagination ── */
+  .pagination { border-top: 1px solid var(--border); padding: 9px 18px; display: flex; align-items: center; gap: 9px; background: var(--surface); flex-shrink: 0; }
+  .page-btn { padding: 5px 12px; border-radius: 7px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text); font-size: 12px; cursor: pointer; font-family: var(--sans); }
+  .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .page-info { font-size: 11px; color: var(--muted); flex: 1; text-align: center; font-family: var(--mono); }
+
+  /* ── Vector modal (full 384-dim) ── */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.72);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; backdrop-filter: blur(3px);
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: 14px; width: 90vw; max-width: 860px;
+    max-height: 88vh; display: flex; flex-direction: column;
+    transform: translateY(12px); transition: transform .2s;
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .modal-header h2 { font-size: 14px; font-weight: 600; flex: 1; font-family: var(--mono); }
+  .modal-close { width: 26px; height: 26px; background: var(--surface3); border: 1px solid var(--border2); border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .modal-body { flex: 1; overflow-y: auto; padding: 18px 20px; }
+
+  /* Full 384-dim heatmap grid */
+  .full-heatmap { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; }
+  .fh-cell {
+    aspect-ratio: 1; border-radius: 2px; cursor: default;
+    transition: transform .1s;
+  }
+  .fh-cell:hover { transform: scale(1.4); z-index: 2; position: relative; }
+
+  /* Dim distribution chart (SVG) */
+  #dist-chart { width: 100%; height: 80px; margin-top: 12px; display: block; }
+
+  .modal-stats { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+  .mstat { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 7px 13px; font-size: 11px; font-family: var(--mono); }
+  .mstat .label { color: var(--muted); margin-bottom: 3px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.7px; }
+  .mstat .val { color: var(--text); font-weight: 600; font-size: 13px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* Section label */
+  .sub-label { font-size: 10px; color: var(--muted); margin-top: 14px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.7px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚡</div>
+  <h1>Local RAG Explorer</h1>
+  <small>— fully offline</small>
+  <div class="badge" id="db-count">0 chunks</div>
+</header>
+
+<!-- Left: ingest + embed feed -->
+<div class="left">
+  <div class="section">
+    <div class="section-title"><span class="dot"></span> 1. Ingest documentation</div>
+    <input type="url" id="url-input" placeholder="https://docs.example.com/…"/>
+    <div class="progress-bar-wrap" id="progress-wrap" style="display:none">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    <button class="btn btn-primary" id="ingest-btn" onclick="startIngest()">Scrape &amp; Embed</button>
+    <button class="btn btn-secondary" style="margin-top:6px" onclick="resetDB()">Clear vector store</button>
+  </div>
+
+  <div class="section" style="padding-bottom:10px">
+    <div class="section-title"><span class="dot green"></span> 2. Live embedding stream</div>
+    <div style="font-size:11px;color:var(--muted);font-family:var(--mono)" id="embed-status">Waiting for ingestion…</div>
+  </div>
+
+  <div id="embed-feed"></div>
+</div>
+
+<!-- Right: tabs -->
+<div class="right">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('chat',this)">💬 Chat</button>
+    <button class="tab" onclick="switchTab('inspector',this)">🗄 Vector DB</button>
+  </div>
+
+  <!-- Chat -->
+  <div class="tab-panel active" id="tab-chat">
+    <div id="chat-area">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">🔍</div>
+        <div>Ingest a URL on the left,<br>then ask questions here.</div>
+      </div>
+    </div>
+    <div class="input-bar">
+      <input type="text" id="query-input" placeholder="Ask a question about the ingested docs…"
+             onkeydown="if(event.key==='Enter') sendQuery()"/>
+      <button id="query-btn" onclick="sendQuery()">Ask</button>
+    </div>
+  </div>
+
+  <!-- Vector DB Inspector -->
+  <div class="tab-panel" id="tab-inspector">
+    <div class="inspector-toolbar">
+      <input type="search" id="search-input" placeholder="Filter chunks by keyword…" oninput="debounceSearch(this.value)"/>
+      <span class="stat-pill">Chunks: <b id="total-count">–</b></span>
+      <span class="stat-pill">Avg norm: <b id="avg-norm">–</b></span>
+      <button class="refresh-btn" onclick="loadInspector()">↻ Refresh</button>
+    </div>
+
+    <div class="source-bar">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.7px;">Ingested sources</div>
+      <div class="source-list" id="source-list">
+        <span style="font-size:11px;color:var(--muted)">None yet</span>
+      </div>
+    </div>
+
+    <div class="inspector-body" id="inspector-body">
+      <div class="empty-state">
+        <div class="empty-icon">🗃</div>
+        <div>No chunks yet. Ingest a URL first.</div>
+      </div>
+    </div>
+
+    <div class="pagination">
+      <button class="page-btn" id="prev-btn" onclick="changePage(-1)" disabled>← Prev</button>
+      <span class="page-info" id="page-info">–</span>
+      <button class="page-btn" id="next-btn" onclick="changePage(1)" disabled>Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Full vector modal ── -->
+<div class="modal-overlay" id="vec-modal" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Vector: –</h2>
+      <button class="modal-close" onclick="document.getElementById('vec-modal').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="empty-state"><div class="spin" style="width:20px;height:20px;border-width:2px;margin:0 auto"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "http://localhost:8000";
+const BAR_COLORS = ["#4d8fff","#2ee8a5","#f5a623","#b47cff","#ff5f5f","#6cf0f8","#ffd166","#06d6a0","#ef476f","#118ab2"];
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById("tab-" + name).classList.add("active");
+  if (name === "inspector") loadInspector();
+}
+
+// ── Header count ──────────────────────────────────────────────────────────────
+async function refreshCount() {
+  try {
+    const r = await fetch(`${API}/embeddings`);
+    const d = await r.json();
+    document.getElementById("db-count").textContent = `${d.count} chunks`;
+  } catch {}
+}
+refreshCount();
+setInterval(refreshCount, 5000);
+
+// ── Ingest ────────────────────────────────────────────────────────────────────
+function startIngest() {
+  const url = document.getElementById("url-input").value.trim();
+  if (!url) { alert("Please enter a URL"); return; }
+
+  document.getElementById("embed-feed").innerHTML = "";
+  document.getElementById("embed-status").textContent = "Connecting…";
+
+  const btn  = document.getElementById("ingest-btn");
+  const wrap = document.getElementById("progress-wrap");
+  const bar  = document.getElementById("progress-bar");
+  btn.disabled = true; btn.textContent = "Ingesting…";
+  wrap.style.display = "block"; bar.style.width = "0%";
+
+  fetch(`${API}/ingest`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url })
+  }).then(resp => {
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "", total = 0;
+
+    function read() {
+      reader.read().then(({ done, value }) => {
+        if (done) {
+          btn.disabled = false; btn.textContent = "Scrape & Embed";
+          bar.style.width = "100%"; refreshCount();
+          return;
+        }
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n\n"); buf = lines.pop();
+        lines.forEach(line => {
+          if (!line.startsWith("data:")) return;
+          const ev = JSON.parse(line.slice(5).trim());
+          if (ev.type === "status") document.getElementById("embed-status").textContent = ev.msg;
+          if (ev.type === "embedding") {
+            if (!total) total = ev.total_chunks;
+            bar.style.width = Math.round((ev.chunk_index + 1) / total * 100) + "%";
+            document.getElementById("embed-status").textContent =
+              `Embedding chunk ${ev.chunk_index + 1} / ${total}`;
+            addEmbedCard(ev);
+          }
+          if (ev.type === "done") {
+            document.getElementById("embed-status").textContent = ev.msg;
+            // Auto-refresh inspector if open
+            if (document.getElementById("tab-inspector").classList.contains("active")) loadInspector();
+          }
+          if (ev.type === "error") document.getElementById("embed-status").textContent = "❌ " + ev.msg;
+        });
+        read();
+      });
+    }
+    read();
+  }).catch(err => {
+    document.getElementById("embed-status").textContent = "Error: " + err.message;
+    btn.disabled = false; btn.textContent = "Scrape & Embed";
+  });
+}
+
+function addEmbedCard(ev) {
+  const feed = document.getElementById("embed-feed");
+  const card = document.createElement("div");
+  card.className = "embed-card";
+  const maxAbs = Math.max(...ev.preview_dims.map(Math.abs), 0.01);
+  const bars = ev.preview_dims.map((v, i) => {
+    const h = Math.round(Math.abs(v) / maxAbs * 20);
+    return `<div class="bar" style="height:${h}px;background:${BAR_COLORS[i % BAR_COLORS.length]};opacity:${v < 0 ? 0.4 : 0.85}"></div>`;
+  }).join("");
+  card.innerHTML = `
+    <div class="embed-meta">
+      <span>chunk ${ev.chunk_index + 1}/${ev.total_chunks}</span>
+      <span>norm ${ev.norm.toFixed(3)}</span>
+    </div>
+    <div class="embed-snippet">${escHtml(ev.snippet)}…</div>
+    <div class="bar-row">${bars}</div>
+  `;
+  feed.prepend(card);
+  while (feed.children.length > 40) feed.removeChild(feed.lastChild);
+}
+
+// ── Inspector ─────────────────────────────────────────────────────────────────
+let inspPage = 0, inspSearch = "", inspPages = 1;
+let searchTimer = null;
+
+function debounceSearch(val) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { inspSearch = val; inspPage = 0; loadInspector(); }, 350);
+}
+
+function changePage(delta) {
+  inspPage = Math.max(0, Math.min(inspPages - 1, inspPage + delta));
+  loadInspector();
+}
+
+async function loadInspector() {
+  const body = document.getElementById("inspector-body");
+  body.innerHTML = `<div class="empty-state"><div class="spin" style="width:20px;height:20px;border-width:2px;margin:0 auto"></div></div>`;
+
+  try {
+    const params = new URLSearchParams({ page: inspPage, page_size: 20, search: inspSearch });
+    const r = await fetch(`${API}/inspect?${params}`);
+    if (!r.ok) throw new Error("Backend returned " + r.status + ". Is the server running?");
+    const d = await r.json();
+
+    inspPages = d.pages;
+    document.getElementById("total-count").textContent = d.total;
+    document.getElementById("avg-norm").textContent = d.avg_norm || "–";
+
+    const sl = document.getElementById("source-list");
+    sl.innerHTML = d.sources && d.sources.length
+      ? d.sources.map(s => `<span class="source-tag" title="${escHtml(s)}">${escHtml(s)}</span>`).join("")
+      : `<span style="font-size:11px;color:var(--muted)">None yet</span>`;
+
+    document.getElementById("page-info").textContent =
+      d.total ? `Page ${d.page + 1} of ${d.pages}  (${d.total} chunks)` : "No results";
+    document.getElementById("prev-btn").disabled = d.page === 0;
+    document.getElementById("next-btn").disabled = d.page >= d.pages - 1;
+
+    body.innerHTML = "";
+    if (!d.items.length) {
+      body.innerHTML = `<div class="empty-state"><div class="empty-icon">🔎</div><div>No chunks match your filter.</div></div>`;
+      return;
+    }
+
+    d.items.forEach((item, idx) => {
+      const gIdx = d.page * 20 + idx + 1;
+      const row = document.createElement("div");
+      row.className = "chunk-row";
+
+      // Sparkline SVG from histogram bins
+      const sparkSvg = renderSparkline(item.histogram || []);
+
+      row.innerHTML = `
+        <div class="chunk-header" onclick="this.parentElement.classList.toggle('expanded')">
+          <span class="chunk-num">#${gIdx}<br><span style="font-weight:400;color:var(--muted);font-size:9px">${escHtml(item.id)}</span></span>
+          <span class="chunk-preview">${escHtml(item.text.slice(0, 90))}</span>
+          ${sparkSvg}
+          <div class="chunk-stats">
+            <span class="cstat">norm <b>${item.norm}</b></span>
+            <span class="cstat"><b style="color:var(--accent2)">+${item.positive_dims}</b>/<b style="color:var(--danger)">−${item.negative_dims}</b></span>
+          </div>
+          <span class="chevron">▶</span>
+        </div>
+        <div class="chunk-detail">
+          <div class="detail-meta">
+            <span class="dmeta">Chunk <b>${item.chunk_index + 1}/${item.total_chunks}</b></span>
+            <span class="dmeta">Dims <b>${item.dims}</b></span>
+            <span class="dmeta">Mean <b>${item.mean}</b></span>
+            <span class="dmeta">Std <b>${item.std ?? '–'}</b></span>
+            <span class="dmeta">Min <b style="color:var(--danger)">${item.min}</b></span>
+            <span class="dmeta">Max <b style="color:var(--accent2)">${item.max}</b></span>
+            <span class="dmeta">+dims <b style="color:var(--accent2)">${item.positive_dims}</b></span>
+            <span class="dmeta">−dims <b style="color:var(--danger)">${item.negative_dims}</b></span>
+            <span class="dmeta">Source <b title="${escHtml(item.url)}">${escHtml(item.url.replace(/^https?:\/\//,'').slice(0,55))}</b></span>
+          </div>
+
+          <div class="sub-label">First 32 dims — heatmap (blue=positive, red=negative)</div>
+          <div class="heatmap">${renderHeatmap(item.preview_dims)}</div>
+
+          <div class="sub-label">Embedding magnitude profile (32 bins across all 384 dims)</div>
+          ${renderHistogramSvg(item.histogram || [])}
+
+          <div class="detail-actions">
+            <button class="detail-btn" onclick="openVectorModal('${escHtml(item.id)}')">🔬 Full 384-dim view</button>
+            <button class="detail-btn" onclick="toggleSimilar(this, '${escHtml(item.id)}')">🔗 Find similar</button>
+          </div>
+
+          <div class="similar-panel" id="sim-${escHtml(item.id)}">
+            <div class="empty-state" style="padding:12px 0">
+              <div class="spin" style="width:16px;height:16px;border-width:1.5px;margin:0 auto"></div>
+            </div>
+          </div>
+
+          <div class="sub-label">Full chunk text (${item.text.length} chars)</div>
+          <div class="full-text">${escHtml(item.text)}</div>
+        </div>
+      `;
+      body.appendChild(row);
+    });
+
+  } catch (err) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div style="color:var(--danger)">${escHtml(err.message)}</div></div>`;
+  }
+}
+
+// ── Heatmap (32 dims, colour-coded) ──────────────────────────────────────────
+function renderHeatmap(dims) {
+  if (!dims || !dims.length) return '<span style="color:var(--muted);font-size:11px">No dim data</span>';
+  const maxAbs = Math.max(...dims.map(Math.abs), 0.001);
+  return dims.map((v, i) => {
+    const t = Math.abs(v) / maxAbs;
+    let bg;
+    if (v >= 0) {
+      const r = Math.round(30 + t * 40), g = Math.round(90 + t * 130), b = Math.round(220 + t * 35);
+      bg = `rgb(${r},${g},${b})`;
+    } else {
+      const r = Math.round(180 + t * 75), g = Math.round(40 + t * 20), b = Math.round(40 + t * 15);
+      bg = `rgb(${r},${g},${b})`;
+    }
+    const textColor = t > 0.4 ? "#fff" : "rgba(255,255,255,0.45)";
+    return `<div class="heat-cell" style="background:${bg};color:${textColor}" title="dim[${i}] = ${v.toFixed(5)}">${v.toFixed(2)}</div>`;
+  }).join("");
+}
+
+// ── Sparkline (inline SVG, 60×20) ────────────────────────────────────────────
+function renderSparkline(bins) {
+  if (!bins || !bins.length) return `<svg class="sparkline"></svg>`;
+  const W = 80, H = 20, pad = 1;
+  const max = Math.max(...bins, 0.001);
+  const step = (W - pad * 2) / (bins.length - 1);
+  const pts = bins.map((v, i) => {
+    const x = pad + i * step;
+    const y = H - pad - (v / max) * (H - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  return `<svg class="sparkline" viewBox="0 0 ${W} ${H}">
+    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+// ── Histogram bar chart (SVG, full width) ─────────────────────────────────────
+function renderHistogramSvg(bins) {
+  if (!bins || !bins.length) return `<div style="color:var(--muted);font-size:11px;margin-top:6px">No histogram data</div>`;
+  const H = 50, gap = 1;
+  const barW = `calc(${100 / bins.length}% - ${gap}px)`;
+  const max = Math.max(...bins, 0.001);
+  const bars = bins.map((v, i) => {
+    const pct = (v / max * 100).toFixed(1);
+    const hue = Math.round(220 - (v / max) * 60); // blue → teal
+    return `<div title="bin ${i}: ${v.toFixed(5)}" style="
+      width:${barW}; height:${pct}%; min-height:2px;
+      background:hsl(${hue},80%,60%); border-radius:2px 2px 0 0;
+      flex-shrink:0;
+    "></div>`;
+  }).join("");
+  return `<div style="display:flex;align-items:flex-end;gap:${gap}px;height:${H}px;margin-top:6px;">${bars}</div>`;
+}
+
+// ── Similar chunks ────────────────────────────────────────────────────────────
+async function toggleSimilar(btn, chunkId) {
+  const panel = document.getElementById(`sim-${chunkId}`);
+  if (panel.classList.toggle("open")) {
+    btn.textContent = "⏹ Hide similar";
+    panel.innerHTML = `<div class="empty-state" style="padding:10px 0"><div class="spin" style="width:14px;height:14px;border-width:1.5px;margin:0 auto"></div></div>`;
+    try {
+      const r = await fetch(`${API}/similar`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chunk_id: chunkId, top_k: 5 })
+      });
+      const d = await r.json();
+      if (!d.results || !d.results.length) {
+        panel.innerHTML = `<div class="similar-title">Similar chunks</div><div style="font-size:11px;color:var(--muted)">No results.</div>`;
+        return;
+      }
+      panel.innerHTML = `<div class="similar-title">Top ${d.results.length} similar chunks (cosine similarity)</div>` +
+        d.results.map(r => `
+          <div class="sim-row">
+            <span class="sim-score">${(r.similarity * 100).toFixed(1)}%</span>
+            <span class="sim-snippet">${escHtml(r.snippet)}</span>
+          </div>
+        `).join("");
+    } catch (e) {
+      panel.innerHTML = `<div style="color:var(--danger);font-size:11px">Error: ${escHtml(e.message)}</div>`;
+    }
+  } else {
+    btn.textContent = "🔗 Find similar";
+  }
+}
+
+// ── Full vector modal ─────────────────────────────────────────────────────────
+async function openVectorModal(chunkId) {
+  const overlay = document.getElementById("vec-modal");
+  const body    = document.getElementById("modal-body");
+  const title   = document.getElementById("modal-title");
+  title.textContent = `Vector: ${chunkId}`;
+  body.innerHTML = `<div class="empty-state"><div class="spin" style="width:20px;height:20px;border-width:2px;margin:0 auto"></div></div>`;
+  overlay.classList.add("open");
+
+  try {
+    const r = await fetch(`${API}/vector/${encodeURIComponent(chunkId)}`);
+    if (!r.ok) throw new Error("Status " + r.status);
+    const d = await r.json();
+    const vec = d.vector;
+
+    // Stats pills
+    const statsHtml = `
+      <div class="modal-stats">
+        <div class="mstat"><div class="label">Dimensions</div><div class="val">${d.dims}</div></div>
+        <div class="mstat"><div class="label">L2 Norm</div><div class="val">${d.norm}</div></div>
+        <div class="mstat"><div class="label">Mean</div><div class="val">${d.mean}</div></div>
+        <div class="mstat"><div class="label">Std</div><div class="val">${d.std ?? '–'}</div></div>
+        <div class="mstat"><div class="label">Min</div><div class="val" style="color:var(--danger)">${d.min}</div></div>
+        <div class="mstat"><div class="label">Max</div><div class="val" style="color:var(--accent2)">${d.max}</div></div>
+        <div class="mstat"><div class="label">Positive</div><div class="val" style="color:var(--accent2)">${d.positive_dims}</div></div>
+        <div class="mstat"><div class="label">Negative</div><div class="val" style="color:var(--danger)">${d.negative_dims}</div></div>
+      </div>`;
+
+    // Source info
+    const srcHtml = `
+      <div class="sub-label">Source</div>
+      <div style="font-size:11px;font-family:var(--mono);color:var(--muted)">${escHtml(d.url)} · chunk ${d.chunk_index}</div>`;
+
+    // Full 384-dim heatmap (24 columns × 16 rows)
+    const maxAbs = Math.max(...vec.map(Math.abs), 0.001);
+    const cells = vec.map((v, i) => {
+      const t = Math.abs(v) / maxAbs;
+      let bg;
+      if (v >= 0) {
+        const r = Math.round(20 + t * 40), g = Math.round(80 + t * 137), b = Math.round(200 + t * 55);
+        bg = `rgb(${r},${g},${b})`;
+      } else {
+        const r = Math.round(170 + t * 85), g = Math.round(30 + t * 20), b = Math.round(30 + t * 20);
+        bg = `rgb(${r},${g},${b})`;
+      }
+      return `<div class="fh-cell" style="background:${bg}" title="dim[${i}] = ${v.toFixed(6)}"></div>`;
+    }).join("");
+
+    // Distribution chart (SVG): histogram of dimension values
+    const distSvg = renderDistributionSvg(vec);
+
+    body.innerHTML = statsHtml + srcHtml +
+      `<div class="sub-label">All 384 dimensions — heatmap (24 × 16 grid)</div>
+       <div class="full-heatmap">${cells}</div>
+       <div class="sub-label">Dimension value distribution</div>
+       ${distSvg}
+       <div class="sub-label">Chunk text</div>
+       <div class="full-text">${escHtml(d.text)}</div>`;
+
+  } catch (e) {
+    body.innerHTML = `<div style="color:var(--danger);font-size:13px">⚠ ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderDistributionSvg(vec) {
+  // Build 40 value bins from min→max
+  const minV = Math.min(...vec), maxV = Math.max(...vec);
+  const range = maxV - minV || 1;
+  const nBins = 40;
+  const counts = new Array(nBins).fill(0);
+  vec.forEach(v => {
+    const b = Math.min(nBins - 1, Math.floor((v - minV) / range * nBins));
+    counts[b]++;
+  });
+  const maxCount = Math.max(...counts, 1);
+  const W = 600, H = 70, pad = 2;
+  const bw = (W - pad * 2) / nBins;
+  const bars = counts.map((c, i) => {
+    const x = pad + i * bw;
+    const barH = (c / maxCount) * (H - 10);
+    const y = H - barH;
+    const hue = Math.round(220 - (i / nBins) * 60);
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw - 1).toFixed(1)}" height="${barH.toFixed(1)}" fill="hsl(${hue},75%,58%)" rx="1"/>`;
+  }).join("");
+  const zeroX = pad + ((0 - minV) / range * (W - pad * 2));
+  const zeroLine = (minV < 0 && maxV > 0)
+    ? `<line x1="${zeroX.toFixed(1)}" y1="0" x2="${zeroX.toFixed(1)}" y2="${H}" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="3,2"/>`
+    : "";
+  return `<svg id="dist-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${zeroLine}${bars}</svg>`;
+}
+
+function closeModal(e) {
+  if (e.target === document.getElementById("vec-modal"))
+    document.getElementById("vec-modal").classList.remove("open");
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+async function sendQuery() {
+  const q = document.getElementById("query-input").value.trim();
+  if (!q) return;
+  document.getElementById("query-input").value = "";
+
+  const area = document.getElementById("chat-area");
+  document.getElementById("empty-state")?.remove();
+  area.appendChild(makeBubble("user", "You", q));
+
+  const aiId = "ai-" + Date.now();
+  const aiBubble = makeBubble("ai", "AI", "", aiId);
+  area.appendChild(aiBubble);
+  area.scrollTop = area.scrollHeight;
+
+  const contentEl = aiBubble.querySelector(".bubble");
+  const btn = document.getElementById("query-btn");
+  btn.disabled = true;
+
+  const resp = await fetch(`${API}/query`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question: q, top_k: 4 })
+  });
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "", answerStarted = false, answerText = "";
+
+  function read() {
+    reader.read().then(({ done, value }) => {
+      if (done) { btn.disabled = false; return; }
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n\n"); buf = lines.pop();
+      lines.forEach(line => {
+        if (!line.startsWith("data:")) return;
+        const ev = JSON.parse(line.slice(5).trim());
+        if (ev.type === "status" && !answerStarted)
+          contentEl.innerHTML = `<div class="status-line"><span class="spin"></span>${escHtml(ev.msg)}</div>`;
+        if (ev.type === "retrieved") {
+          const pills = ev.chunks.map(c => `
+            <div class="chunk-pill">
+              <span class="score-badge">${c.score}</span>
+              <span class="chunk-text">${escHtml(c.snippet)}</span>
+            </div>`).join("");
+          contentEl.innerHTML = `<div class="retrieved-chunks">${pills}</div>
+            <div class="status-line"><span class="spin"></span> Generating answer…</div>`;
+        }
+        if (ev.type === "token") {
+          if (!answerStarted) {
+            answerStarted = true;
+            contentEl.querySelector(".status-line")?.remove();
+            contentEl.insertAdjacentHTML("beforeend", `<div id="${aiId}-answer"></div>`);
+          }
+          answerText += ev.text;
+          const el = document.getElementById(`${aiId}-answer`);
+          if (el) el.textContent = answerText;
+        }
+        if (ev.type === "error")
+          contentEl.innerHTML += `<div style="color:var(--danger);margin-top:8px">⚠ ${escHtml(ev.msg)}</div>`;
+      });
+      area.scrollTop = area.scrollHeight;
+      read();
+    });
+  }
+  read();
+}
+
+function makeBubble(role, label, text, id) {
+  const msg = document.createElement("div");
+  msg.className = "message"; msg.id = id || "";
+  msg.innerHTML = `<div class="avatar ${role}">${label[0]}</div><div class="bubble ${role}">${escHtml(text)}</div>`;
+  return msg;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+async function resetDB() {
+  if (!confirm("Clear all stored embeddings?")) return;
+  await fetch(`${API}/reset`, { method: "DELETE" });
+  document.getElementById("embed-feed").innerHTML = "";
+  document.getElementById("embed-status").textContent = "Vector store cleared.";
+  document.getElementById("inspector-body").innerHTML =
+    `<div class="empty-state"><div class="empty-icon">🗃</div><div>No chunks yet.</div></div>`;
+  document.getElementById("source-list").innerHTML =
+    `<span style="font-size:11px;color:var(--muted)">None yet</span>`;
+  document.getElementById("total-count").textContent = "–";
+  document.getElementById("avg-norm").textContent = "–";
+  document.getElementById("page-info").textContent = "–";
+  refreshCount();
+}
+</script>
+</body>
+</html>
